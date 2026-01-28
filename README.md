@@ -1,1 +1,812 @@
-# Fam-cal
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Operator Console v46.3</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            /* DAY MODE */
+            --bg: #f1f5f9; --panel: #ffffff; --border: #cbd5e1;
+            --text-main: #1e293b; --text-dim: #64748b;
+            --accent: #3b82f6; --accent-glow: rgba(59, 130, 246, 0.2);
+            --success: #10b981; --tag-bg: #e2e8f0;
+            --flag-imp: #D96565; --flag-his: #7CA2E4;
+            --flag-hers: #F49AC1; --flag-ours: #EAB308;
+        }
+        body.field-ops {
+            /* NIGHT MODE */
+            --bg: #2c2a25; --panel: #3d3a33; --border: #524e44;
+            --text-main: #e8e4d9; --text-dim: #a39e93;
+            --accent: #d4a373; --accent-glow: rgba(212, 163, 115, 0.2);
+            --success: #a3b18a; --tag-bg: #47443b;
+            --flag-imp: #B34D5A; --flag-his: #457b9d;
+            --flag-hers: #FF94B6; --flag-ours: #D4AF37;
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+        body { background-color: var(--bg); color: var(--text-main); font-family: 'Inter', sans-serif; margin: 0; padding-bottom: 150px; transition: 0.3s; user-select: none; }
+
+        /* HUD */
+        .hud-top { 
+            background: var(--panel); 
+            border-bottom: 1px solid var(--border); 
+            padding: 12px 18px 0 18px; 
+            position: sticky; top: 0; z-index: 100; 
+            view-transition-name: header; /* Header participates in transition */
+        }
+        .hud-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .hud-controls { display: flex; gap: 8px; align-items: center; }
+        .btn-icon { background: var(--tag-bg); border: 1px solid var(--border); color: var(--text-dim); padding: 6px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .month-nav { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--text-dim); font-family: 'JetBrains Mono'; }
+        .month-trigger { cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px; font-weight: 700; color: var(--accent); }
+        
+        /* CALENDAR */
+        .cal-container { 
+            overflow: hidden; 
+            transition: height 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+            will-change: height;
+        }
+        .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; padding-bottom: 8px; }
+        .cal-day { aspect-ratio: 1.2; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 5px; background: var(--tag-bg); cursor: pointer; position: relative; font-family: 'JetBrains Mono'; font-size: 0.75rem; color: var(--text-dim); border: 1px solid transparent; }
+        .cal-day.today { border-color: var(--accent); color: var(--accent); font-weight: bold; }
+        .cal-day.assign-mode { border-color: var(--success); background: rgba(16, 185, 129, 0.1); animation: pulse 1s infinite; }
+        .cal-dot { width: 3px; height: 3px; background: var(--text-dim); border-radius: 50%; position: absolute; bottom: 5px; }
+        .cal-day.has-task .cal-dot { background: var(--success); }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+        /* Tabs */
+        .tab-strip { display: flex; gap: 15px; overflow-x: auto; padding: 10px 0; border-top: 1px solid var(--border); margin-top: 5px; }
+        .tab-item { font-family: 'JetBrains Mono'; font-size: 0.75rem; color: var(--text-dim); cursor: pointer; padding: 5px 10px; border-radius: 6px; white-space: nowrap; font-weight: bold; }
+        .tab-item.active { color: var(--accent); background: var(--accent-glow); }
+        
+        /* VIEW CONTAINERS */
+        .view-section { display: none; }
+        .view-section.active { display: block; }
+
+        /* Logs */
+        .console-body { padding: 12px 18px; display: flex; flex-direction: column; align-items: center; }
+        .log-container { width: 100%; max-width: 650px; }
+        
+        .section-header { 
+            font-family: 'JetBrains Mono'; font-size: 0.75rem; color: var(--accent); 
+            margin: 18px 0 10px 0; cursor: pointer; 
+            display: flex; align-items: center; gap: 10px; 
+            font-weight: 700; letter-spacing: 0.5px;
+        }
+        .section-header i { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .section-header.closed i { transform: rotate(-90deg); }
+        
+        .section-content {
+            display: grid; grid-template-rows: 1fr;
+            transition: grid-template-rows 0.35s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s;
+            visibility: visible;
+        }
+        .section-content.closed {
+            grid-template-rows: 0fr; visibility: hidden;
+            transition: grid-template-rows 0.35s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s 0.35s;
+        }
+        .section-inner { overflow: hidden; min-height: 0; }
+
+        /* Tasks */
+        .log-item { 
+            border-left: 2px solid var(--border); padding: 0 0 0 12px; margin-bottom: 10px; 
+            view-transition-name: var(--task-id); contain: layout;
+        }
+        .log-item.flag-imp { border-left-color: var(--flag-imp); } .log-item.flag-his { border-left-color: var(--flag-his); }
+        .log-item.flag-hers { border-left-color: var(--flag-hers); } .log-item.flag-ours { border-left-color: var(--flag-ours); }
+
+        .task-row { display: flex; align-items: flex-start; gap: 12px; }
+        .checkbox { width: 20px; height: 20px; border: 2px solid var(--text-dim); border-radius: 5px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; cursor: pointer; }
+        .task-content { flex-grow: 1; }
+        .task-main-line { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+        
+        /* FONT SIZE TWEAK -> 0.85rem */
+        .task-text { font-size: 0.85rem; color: var(--text-main); line-height: 1.4; flex-grow: 1; cursor: pointer; margin-bottom: 2px; }
+        
+        .collapse-caret { color: var(--text-dim); cursor: pointer; padding: 4px; font-size: 1.1rem; transition: transform 0.3s ease; }
+        .collapse-caret.closed { transform: rotate(-90deg); }
+        .task-details-wrapper { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
+        .task-details-wrapper.collapsed { grid-template-rows: 0fr; }
+        .task-details-inner { overflow: hidden; min-height: 0; }
+        .task-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-family: 'JetBrains Mono'; font-size: 0.7rem; color: var(--text-dim); margin-bottom: 5px; margin-top: 3px; }
+        .tag { background: var(--tag-bg); padding: 3px 7px; border-radius: 4px; display: flex; align-items: center; gap: 5px; border: 1px solid transparent; height: 22px; }
+        .tag.date.due { color: var(--accent); border-color: var(--accent); cursor: pointer; }
+        .flag-btn { cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; height: 22px; width: 22px; }
+        .flag-btn.imp { color: var(--flag-imp); } .flag-btn.his { color: var(--flag-his); } .flag-btn.hers { color: var(--flag-hers); } .flag-btn.ours { color: var(--flag-ours); }
+        .sub-wrapper { margin-left: 2px; border-left: 1px dashed var(--border); padding-left: 12px; margin-top: 6px; }
+        .sub-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 0.85rem; color: var(--text-dim); cursor: pointer; }
+        .sub-checkbox { width: 14px; height: 14px; border: 1px solid var(--text-dim); border-radius: 3px; }
+        .sub-item.done span { text-decoration: line-through; opacity: 0.5; } .sub-item.done .sub-checkbox { background: var(--text-dim); }
+        .add-sub-btn { font-size: 0.75rem; color: var(--accent); margin-top: 6px; cursor: pointer; display: inline-block; font-family: 'JetBrains Mono'; }
+        .log-item.archived { opacity: 0.5; border-left-color: var(--border); } .log-item.archived .task-text { text-decoration: line-through; }
+
+        /* NOTES EDITOR */
+        #notes-view { padding: 20px; height: 70vh; }
+        .notes-area {
+            width: 100%; height: 100%;
+            background: var(--tag-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Inter', sans-serif;
+            font-size: 1rem;
+            color: var(--text-main);
+            line-height: 1.6;
+            resize: none;
+            outline: none;
+        }
+        .notes-area:focus { border-color: var(--accent); }
+
+        /* Footer & Sync */
+        .command-bar { 
+            position: fixed; bottom: 0; left: 0; right: 0; 
+            background: var(--panel); 
+            border-top: 1px solid var(--border); 
+            padding: 15px; display: flex; justify-content: center; 
+            z-index: 2000; 
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+            view-transition-name: footer; /* Footer participates in transition */
+        }
+        .cmd-wrapper { width: 100%; max-width: 650px; position: relative; }
+        .cmd-prefix { position: absolute; left: 15px; top: 13px; font-family: 'JetBrains Mono'; color: var(--accent); font-weight: bold; }
+        input.cmd-input { width: 100%; background: var(--tag-bg); border: 1px solid var(--border); color: var(--text-main); font-family: 'JetBrains Mono'; font-size: 1rem; padding: 12px 12px 12px 30px; border-radius: 4px; outline: none; }
+
+        .sync-status { position: absolute; right: 15px; bottom: 14px; font-family: 'JetBrains Mono'; font-size: 0.65rem; font-weight: bold; display: flex; align-items: center; gap: 5px; color: var(--text-dim); pointer-events: none; }
+        .sync-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); }
+        .sync-status.syncing .sync-dot { background: #eab308; box-shadow: 0 0 5px #eab308; animation: flash 1s infinite; }
+        .sync-status.synced .sync-dot { background: var(--success); box-shadow: 0 0 5px var(--success); }
+        .sync-status.error .sync-dot { background: var(--flag-imp); }
+        @keyframes flash { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+
+        .toast { 
+            position: fixed; top: 130px; left: 50%; transform: translateX(-50%); 
+            background: var(--accent); color: #fff; padding: 10px 20px; 
+            border-radius: 6px; font-weight: bold; font-family: 'JetBrains Mono'; font-size: 0.9rem; 
+            pointer-events: none; opacity: 0; transition: 0.3s; 
+            z-index: 6000; /* FIX: Higher standard Z-Index */
+            view-transition-name: toast; /* FIX: Participate in transition */
+        }
+        .toast.show { opacity: 1; top: 140px; }
+        
+        #debug-bar { position: fixed; bottom: 80px; left:0; right:0; background: rgba(0,0,0,0.8); color: lime; font-size: 10px; font-family: monospace; padding: 5px; text-align: center; pointer-events: none; z-index: 500; height: 40px; overflow: hidden; display:none; }
+        #debug-bar.error { color: red; display:block; }
+        
+        ::view-transition-group(root) { animation-duration: 0.4s; }
+        ::view-transition-group(footer) { z-index: 5000; } /* Footer layer */
+        ::view-transition-group(header) { z-index: 5000; } /* Header layer */
+        ::view-transition-group(toast) { z-index: 7000; } /* FIX: Highest layer */
+    </style>
+</head>
+<body class="field-ops">
+
+    <div id="debug-bar"></div>
+
+    <div class="hud-top">
+        <div class="hud-header">
+            <div class="hud-controls">
+                <div class="btn-icon" onclick="app.toggleTheme()"><i class="ri-contrast-drop-line"></i></div>
+                <div class="btn-icon" onclick="app.switchUser()"><i class="ri-user-3-line"></i></div>
+                <span id="user-badge" style="font-size:0.75rem; font-family:'JetBrains Mono'; font-weight:700; color:var(--text-dim);">OPR: JESSE</span>
+            </div>
+            <div class="month-nav">
+                <i class="ri-arrow-left-s-line nav-arrow" onclick="app.navMonth(-1)"></i>
+                <div class="month-trigger" onclick="app.toggleCalendar()">
+                    <span id="month-label">JAN 2026</span>
+                </div>
+                <i class="ri-arrow-right-s-line nav-arrow" onclick="app.navMonth(1)"></i>
+            </div>
+        </div>
+        <div class="cal-container" id="cal-wrapper">
+            <div class="cal-grid" id="cal-grid"></div>
+        </div>
+        <div class="tab-strip" id="tab-strip"></div>
+    </div>
+
+    <div id="main-view" class="view-section active">
+        <div class="console-body">
+            <div class="log-container" id="log-stream"></div>
+        </div>
+    </div>
+
+    <div id="notes-view" class="view-section">
+        <textarea id="notes-area" class="notes-area" placeholder="We need to talk..."></textarea>
+    </div>
+
+    <div class="command-bar">
+        <div class="cmd-wrapper">
+            <span class="cmd-prefix">></span>
+            <input type="text" class="cmd-input" id="cmd-input" placeholder="Update plans..." autocomplete="off">
+            <div class="sync-status" id="sync-status">STATUS <div class="sync-dot"></div></div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast">SYSTEM READY</div>
+
+<script>
+    const app = {};
+
+    // --- KEYS ---
+    const SUPABASE_URL = 'https://swflqohnwwfsanawnfdm.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN3Zmxxb2hud3dmc2FuYXduZmRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk1NDI5NDMsImV4cCI6MjA4NTExODk0M30.W4LYUO0RQl5gKLQ9cThpBgHIhKnDhNJErBIBAWEIxN4';
+
+    // --- UTILS ---
+    const debugBar = document.getElementById('debug-bar');
+    const syncStatus = document.getElementById('sync-status');
+    const toast = document.getElementById('toast');
+    
+    function log(msg, isError = false) {
+        debugBar.innerText = msg;
+        if(isError) debugBar.classList.add('error');
+    }
+
+    function setSync(state) {
+        syncStatus.className = 'sync-status ' + state;
+    }
+
+    function showToast(msg) { 
+        toast.innerText = msg; toast.classList.add('show'); 
+        setTimeout(() => toast.classList.remove('show'), 2000); 
+    }
+
+    function getLocalState(key) {
+        try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch(e) { return {}; }
+    }
+    function setLocalState(key, data) {
+        localStorage.setItem(key, JSON.stringify(data));
+    }
+
+    // --- STATE ---
+    app.users = ["JESSE", "VANNA", "OWEN"];
+    app.userIndex = parseInt(localStorage.getItem('op_user_index')) || 0;
+    
+    // UPDATED LIST ORDER WITH VANNA
+    app.lists = ["MAIN", "HONEYMOON", "VANNA", "JESSE"]; 
+    app.activeList = "MAIN";
+    app.tasks = [];
+    app.notesContent = "";
+    app.notesId = null;
+    app.viewDate = new Date();
+    app.isCalExpanded = false;
+    app.assigningTaskId = null;
+    app.supabase = null;
+    app.isOffline = true;
+    app.isDialogOpen = false; 
+    app.notesTimeout = null;
+
+    // --- INIT ---
+    async function init() {
+        const savedTheme = localStorage.getItem('op_theme');
+        if (savedTheme === 'day') document.body.classList.remove('field-ops');
+        else document.body.classList.add('field-ops');
+
+        document.getElementById('user-badge').innerText = `OPR: ${app.users[app.userIndex]}`;
+
+        try {
+            if (window.supabase) {
+                app.supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+            }
+        } catch(e) { log("OFFLINE: " + e.message, true); }
+
+        app.renderTabs();
+        app.renderCalendar();
+        app.setInitialCalHeight(); 
+        app.renderLog(); 
+        app.initSwipe(); 
+        app.initNotes();
+
+        if(app.supabase) {
+            setSync('syncing');
+            const { data, error } = await app.supabase.from('tasks').select('*').order('created_at', { ascending: false });
+            if(!error) {
+                app.tasks = data || [];
+                
+                const notesTask = app.tasks.find(t => t.list === 'SYSTEM' && t.operator === 'NOTES');
+                if (notesTask) {
+                    app.notesId = notesTask.id;
+                    app.notesContent = notesTask.text || "";
+                    document.getElementById('notes-area').value = app.notesContent;
+                }
+
+                // Filter unique lists but keep hardcoded order preference
+                const dbLists = [...new Set(app.tasks.map(t => t.list))].filter(l => l !== 'SYSTEM' && Boolean(l));
+                dbLists.forEach(l => { if(!app.lists.includes(l)) app.lists.push(l); });
+                
+                app.isOffline = false;
+                app.renderTabs();
+                app.refresh(); 
+                app.initRealtime();
+                setSync('synced');
+            } else {
+                setSync('error');
+            }
+        }
+    }
+
+    app.initRealtime = function() {
+        app.supabase.channel('public:tasks')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
+            setSync('syncing');
+            app.supabase.from('tasks').select('*').order('created_at', { ascending: false }).then(({data}) => {
+                if(data) { 
+                    app.tasks = data; 
+                    
+                    const notesTask = app.tasks.find(t => t.list === 'SYSTEM' && t.operator === 'NOTES');
+                    if (notesTask && notesTask.text !== app.notesContent && document.activeElement.id !== 'notes-area') {
+                        app.notesContent = notesTask.text;
+                        document.getElementById('notes-area').value = app.notesContent;
+                    }
+
+                    app.refresh(); 
+                    setSync('synced'); 
+                }
+            });
+        })
+        .subscribe();
+    };
+
+    app.refresh = function() {
+        if(app.activeList === 'NOTES') return;
+        if (!document.startViewTransition) {
+            app.renderLog();
+            app.renderCalendar();
+        } else {
+            document.startViewTransition(() => {
+                app.renderLog();
+                app.renderCalendar();
+            });
+        }
+    };
+
+    // --- NOTES LOGIC ---
+    app.initNotes = function() {
+        const area = document.getElementById('notes-area');
+        area.addEventListener('input', () => {
+            app.notesContent = area.value;
+            setSync('syncing');
+            clearTimeout(app.notesTimeout);
+            app.notesTimeout = setTimeout(app.saveNotes, 1000);
+        });
+    };
+
+    app.saveNotes = function() {
+        if (app.isOffline) return;
+        const payload = { list: 'SYSTEM', operator: 'NOTES', text: app.notesContent, created_at: new Date().toISOString() };
+        if (app.notesId) {
+            app.supabase.from('tasks').update({text: app.notesContent}).eq('id', app.notesId).then(() => setSync('synced'));
+        } else {
+            app.supabase.from('tasks').insert([payload]).select().then(({data}) => {
+                if(data) { app.notesId = data[0].id; setSync('synced'); }
+            });
+        }
+    };
+
+    // --- CALENDAR LOGIC (DATE BUG FIX) ---
+    app.calcWeekHeight = function() {
+        const day = document.querySelector('.cal-day');
+        if (!day) return 60; 
+        return day.offsetHeight + 4;
+    };
+
+    app.setInitialCalHeight = function() {
+        const el = document.getElementById('cal-wrapper');
+        setTimeout(() => {
+            el.style.height = app.calcWeekHeight() + 'px';
+        }, 50);
+    };
+
+    app.toggleCalendar = function() {
+        const el = document.getElementById('cal-wrapper');
+        const grid = document.getElementById('cal-grid');
+        
+        if (app.isCalExpanded) {
+            el.style.height = grid.scrollHeight + 'px';
+            el.offsetHeight; 
+            el.style.height = app.calcWeekHeight() + 'px'; 
+        } else {
+            app.renderCalendar(true); 
+            const fullHeight = grid.scrollHeight;
+            el.style.height = fullHeight + 'px';
+        }
+        app.isCalExpanded = !app.isCalExpanded;
+    };
+
+    // --- INTERACTION ---
+    app.addLongPress = function(el, callback) {
+        let timer;
+        let isTouch = false;
+        el.addEventListener('touchstart', (e) => {
+            isTouch = true;
+            timer = setTimeout(() => {
+                if(navigator.vibrate) navigator.vibrate(50);
+                callback(); 
+            }, 800);
+        }, {passive: true});
+        el.addEventListener('touchend', () => clearTimeout(timer));
+        el.addEventListener('touchmove', () => clearTimeout(timer));
+        el.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            if (isTouch) { isTouch = false; return; }
+            callback();
+        });
+    };
+
+    app.confirmDelete = function(id, type, subId) {
+        if(app.isDialogOpen) return;
+        app.isDialogOpen = true;
+
+        const t = app.tasks.find(x => x.id === id);
+        let txt = type === 'main' ? t.text : t.subs.find(s => s.id === subId).text;
+
+        if(confirm(`DELETE: "${txt}"?`)) {
+            setSync('syncing');
+            if(type === 'main') {
+                app.tasks = app.tasks.filter(x => x.id !== id);
+                if(!app.isOffline) app.supabase.from('tasks').delete().eq('id', id).then(() => setSync('synced'));
+            } else {
+                t.subs = t.subs.filter(s => s.id !== subId);
+                if(!app.isOffline) app.supabase.from('tasks').update({subs: t.subs}).eq('id', id).then(() => setSync('synced'));
+            }
+            app.refresh(); 
+        }
+        setTimeout(() => { app.isDialogOpen = false; }, 300);
+    };
+
+    // --- UI ACTIONS ---
+    app.toggleTheme = function() { 
+        document.body.classList.toggle('field-ops');
+        const isNight = document.body.classList.contains('field-ops');
+        localStorage.setItem('op_theme', isNight ? 'field-ops' : 'day');
+        showToast(isNight ? "MODE: NIGHT" : "MODE: DAY");
+    };
+    
+    app.switchUser = function() {
+        app.userIndex = (app.userIndex + 1) % app.users.length;
+        localStorage.setItem('op_user_index', app.userIndex);
+        document.getElementById('user-badge').innerText = `OPR: ${app.users[app.userIndex]}`;
+        showToast("USER: " + app.users[app.userIndex]);
+    };
+
+    app.navMonth = function(d) {
+        app.viewDate.setMonth(app.viewDate.getMonth() + d); 
+        app.navigate(); 
+    };
+
+    app.initSwipe = function() {
+        let ts = 0;
+        const el = document.getElementById('cal-wrapper');
+        el.addEventListener('touchstart', e => ts = e.changedTouches[0].screenX, {passive:true});
+        el.addEventListener('touchend', e => {
+            if(ts - e.changedTouches[0].screenX > 50) app.navMonth(1);
+            if(e.changedTouches[0].screenX - ts > 50) app.navMonth(-1);
+        }, {passive:true});
+    };
+
+    app.switchTab = function(name) { 
+        app.activeList = name; 
+        app.renderTabs();
+        
+        const mainView = document.getElementById('main-view');
+        const notesView = document.getElementById('notes-view');
+        const input = document.getElementById('cmd-input');
+        
+        if (name === 'NOTES') {
+            mainView.classList.remove('active');
+            notesView.classList.add('active');
+            input.disabled = true; 
+            input.placeholder = "Type above to love...";
+        } else {
+            notesView.classList.remove('active');
+            mainView.classList.add('active');
+            input.disabled = false;
+            input.placeholder = "Update plans...";
+            app.navigate(); 
+        }
+    };
+
+    app.navigate = function() {
+        app.renderLog();
+        app.renderCalendar();
+    };
+
+    // --- RENDERERS ---
+    app.renderTabs = function() {
+        const strip = document.getElementById('tab-strip');
+        strip.innerHTML = '';
+        
+        app.lists.forEach(l => {
+            const tab = document.createElement('div');
+            tab.className = `tab-item ${l === app.activeList ? 'active' : ''}`;
+            tab.innerText = l;
+            tab.onclick = () => app.switchTab(l);
+            strip.appendChild(tab);
+        });
+        
+        // REMOVED + BUTTON
+
+        const notesTab = document.createElement('div');
+        notesTab.className = `tab-item ${app.activeList === 'NOTES' ? 'active' : ''}`;
+        notesTab.innerText = "NOTES";
+        notesTab.onclick = () => app.switchTab('NOTES');
+        strip.appendChild(notesTab);
+    };
+
+    app.renderCalendar = function(forceFull = false) {
+        const grid = document.getElementById('cal-grid');
+        grid.innerHTML = '';
+        document.getElementById('month-label').innerText = app.viewDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).toUpperCase();
+
+        let startBase = new Date(app.viewDate);
+        if(!app.isCalExpanded && !forceFull) {
+            const now = new Date();
+            if(app.viewDate.getMonth() === now.getMonth() && app.viewDate.getFullYear() === now.getFullYear()) startBase = now;
+            else startBase.setDate(1);
+            const first = startBase.getDate() - startBase.getDay();
+            for(let i=0; i<7; i++) {
+                let d = new Date(startBase); d.setDate(first + i);
+                // DATE BUG FIX: RESET TIME TO MIDNIGHT
+                d.setHours(0,0,0,0);
+                app.createDayEl(grid, d);
+            }
+        } else {
+            const y = app.viewDate.getFullYear(), m = app.viewDate.getMonth();
+            const days = new Date(y, m+1, 0).getDate();
+            const pad = new Date(y, m, 1).getDay();
+            for(let i=0; i<pad; i++) grid.appendChild(document.createElement('div'));
+            for(let i=1; i<=days; i++) app.createDayEl(grid, new Date(y, m, i));
+        }
+    };
+
+    app.createDayEl = function(container, dateObj) {
+        // Safe Local Date String
+        const offset = dateObj.getTimezoneOffset();
+        const localDate = new Date(dateObj.getTime() - (offset * 60 * 1000));
+        const s = localDate.toISOString().split('T')[0];
+
+        const has = app.tasks.some(t => t.date === s && !t.completed);
+        const el = document.createElement('div');
+        el.className = `cal-day ${s === new Date().toISOString().split('T')[0] ? 'today' : ''} ${has ? 'has-task' : ''} ${app.assigningTaskId ? 'assign-mode' : ''}`;
+        el.innerHTML = `<span>${dateObj.getDate()}</span><div class="cal-dot"></div>`;
+        el.onclick = () => { if(app.assigningTaskId) app.setTaskDate(s); };
+        container.appendChild(el);
+    };
+
+    app.renderLog = function() {
+        const stream = document.getElementById('log-stream');
+        stream.innerHTML = '';
+        const relevant = app.tasks.filter(t => t.list === app.activeList);
+        
+        const active = relevant.filter(t => !t.completed);
+        const done = relevant.filter(t => t.completed);
+        const unscheduled = active.filter(t => !t.date);
+        const scheduled = active.filter(t => t.date).sort((a,b) => new Date(a.date) - new Date(b.date));
+
+        if(unscheduled.length > 0) app.renderGroup(stream, "ONGOING", unscheduled, "pending");
+        
+        let curMonth = "";
+        let buf = [];
+        scheduled.forEach(t => {
+            const m = new Date(t.date + 'T12:00:00').toLocaleDateString('en-US', {month:'long'}).toUpperCase();
+            if(m !== curMonth) {
+                if(curMonth) app.renderGroup(stream, curMonth, buf, curMonth);
+                curMonth = m;
+                buf = [];
+            }
+            buf.push(t);
+        });
+        if(curMonth) app.renderGroup(stream, curMonth, buf, curMonth);
+        
+        if(done.length > 0) app.renderGroup(stream, "ARCHIVE", done, "archive");
+    };
+
+    app.renderGroup = function(container, title, tasks, key) {
+        const header = document.createElement('div');
+        header.className = 'section-header';
+        header.innerHTML = `<i class="ri-arrow-down-s-line"></i> <span>${title} <span style="opacity:0.5; margin-left:5px">${tasks.length}</span></span>`;
+        
+        const closedState = getLocalState('op_sections');
+        const isClosed = closedState[key];
+        if(isClosed) header.classList.add('closed');
+
+        const content = document.createElement('div');
+        content.className = 'section-content';
+        if(isClosed) content.classList.add('closed');
+        
+        const inner = document.createElement('div');
+        inner.className = 'section-inner';
+        content.appendChild(inner);
+
+        header.onclick = () => {
+            const nowClosed = !header.classList.contains('closed');
+            if(nowClosed) {
+                header.classList.add('closed'); content.classList.add('closed');
+            } else {
+                header.classList.remove('closed'); content.classList.remove('closed');
+            }
+            const s = getLocalState('op_sections');
+            s[key] = nowClosed;
+            setLocalState('op_sections', s);
+        };
+
+        container.appendChild(header);
+        tasks.forEach(t => inner.appendChild(app.createTaskEl(t)));
+        container.appendChild(content);
+    };
+
+    app.createTaskEl = function(t) {
+        const el = document.createElement('div');
+        const flags = ['none', 'flag-imp', 'flag-his', 'flag-hers', 'flag-ours'];
+        el.className = `log-item ${flags[t.flag||0]} ${t.completed ? 'archived' : ''}`;
+        el.style.viewTransitionName = `task-${t.id}`;
+        
+        const minState = getLocalState('op_minimized');
+        const isMin = minState[t.id];
+        
+        let dHtml = `<div class="tag date" onclick="app.initDate(${t.id}, event)">---</div>`;
+        if(t.date) {
+            const pretty = new Date(t.date + 'T12:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric'});
+            dHtml = `<div class="tag date due" onclick="app.initDate(${t.id}, event)">${pretty}</div>`;
+        }
+
+        const fIcons = ['ri-flag-line', 'ri-flag-fill', 'ri-flag-fill', 'ri-flag-fill', 'ri-flag-fill'];
+        const fClasses = ['', 'imp', 'his', 'hers', 'ours'];
+
+        const subContainer = document.createElement('div');
+        subContainer.className = 'sub-wrapper';
+        (t.subs || []).forEach(s => {
+            const sDiv = document.createElement('div');
+            sDiv.className = `sub-item ${s.completed?'done':''}`;
+            sDiv.onclick = (e) => { e.stopPropagation(); app.toggleSub(t.id, s.id, e); };
+            sDiv.innerHTML = `<div class="sub-checkbox"></div><span>${s.text}</span>`;
+            app.addLongPress(sDiv, () => app.confirmDelete(t.id, 'sub', s.id));
+            subContainer.appendChild(sDiv);
+        });
+        
+        if(!t.completed) {
+            const addBtn = document.createElement('div');
+            addBtn.className = 'add-sub-btn';
+            addBtn.innerText = '+ Add Sub';
+            addBtn.onclick = (e) => { e.stopPropagation(); app.promptSub(t.id); };
+            subContainer.appendChild(addBtn);
+        }
+
+        el.innerHTML = `
+            <div class="task-row">
+                <div class="checkbox" onclick="app.toggleMain(${t.id})">${t.completed ? '<i class="ri-check-line"></i>' : ''}</div>
+                <div class="task-content">
+                    <div class="task-main-line">
+                        <div class="task-text">${t.text}</div>
+                        <i class="ri-arrow-down-s-line collapse-caret ${isMin ? 'closed' : ''}" id="caret-${t.id}" onclick="app.toggleTree(${t.id})"></i>
+                    </div>
+                    <div class="task-details-wrapper ${isMin ? 'collapsed' : ''}" id="details-${t.id}">
+                        <div class="task-details-inner">
+                            <div class="task-meta">
+                                ${dHtml}
+                                <div class="tag user"><i class="ri-user-3-fill"></i> ${t.operator||'UNK'}</div>
+                                <div class="tag"><i class="${fIcons[t.flag||0]} flag-btn ${fClasses[t.flag||0]}" onclick="app.cycleFlag(${t.id})"></i></div>
+                            </div>
+                            </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        el.querySelector('.task-details-inner').appendChild(subContainer);
+        app.addLongPress(el.querySelector('.task-text'), () => app.confirmDelete(t.id, 'main'));
+
+        return el;
+    };
+
+    // --- DB WRITES ---
+    app.input = document.getElementById('cmd-input');
+    app.input.addEventListener('keypress', (e) => {
+        if(e.key === 'Enter') {
+            const txt = app.input.value.trim();
+            if(!txt) return;
+            setSync('syncing');
+            const obj = { text: txt, list: app.activeList, operator: app.users[app.userIndex], flag: 0, completed: false, date: null, subs: [], created_at: new Date().toISOString() };
+            app.tasks.unshift(obj);
+            app.refresh(); 
+            app.input.value = '';
+            
+            if(!app.isOffline) {
+                app.supabase.from('tasks').insert([obj]).select().then(({data, error}) => {
+                    if(data) { app.tasks[0].id = data[0].id; setSync('synced'); }
+                    if(error) setSync('error');
+                });
+            }
+        }
+    });
+
+    app.toggleMain = function(id) {
+        setSync('syncing');
+        const t = app.tasks.find(x => x.id === id);
+        t.completed = !t.completed;
+        app.refresh(); 
+        if(!app.isOffline) app.supabase.from('tasks').update({completed: t.completed}).eq('id', id).then(() => setSync('synced'));
+    };
+
+    app.cycleFlag = function(id) {
+        setSync('syncing');
+        const t = app.tasks.find(x => x.id === id);
+        t.flag = ((t.flag||0) + 1) % 5;
+        app.renderLog(); 
+        
+        const names = ["NONE", "IMPORTANT", "HIS", "HERS", "OURS"];
+        showToast("FLAG: " + names[t.flag]);
+
+        if(!app.isOffline) app.supabase.from('tasks').update({flag: t.flag}).eq('id', id).then(() => setSync('synced'));
+    };
+
+    // DIRECT DOM MANIPULATION FOR SMOOTH SUBTASK TOGGLE
+    app.toggleTree = function(id) {
+        const wrapper = document.getElementById(`details-${id}`);
+        const caret = document.getElementById(`caret-${id}`);
+        
+        const s = getLocalState('op_minimized');
+        const isNowClosed = !wrapper.classList.contains('collapsed');
+        
+        if (isNowClosed) {
+            wrapper.classList.add('collapsed');
+            caret.classList.add('closed');
+        } else {
+            wrapper.classList.remove('collapsed');
+            caret.classList.remove('closed');
+        }
+        
+        s[id] = isNowClosed;
+        setLocalState('op_minimized', s);
+    };
+
+    app.initDate = function(id, e) {
+        e.stopPropagation();
+        if(app.assigningTaskId === id) {
+            app.setTaskDate(null);
+        } else {
+            app.assigningTaskId = id;
+            app.renderCalendar();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    };
+
+    app.setTaskDate = function(dateStr) {
+        setSync('syncing');
+        const t = app.tasks.find(x => x.id === app.assigningTaskId);
+        t.date = dateStr;
+        app.assigningTaskId = null;
+        app.refresh(); 
+        if(!app.isOffline) app.supabase.from('tasks').update({date: dateStr}).eq('id', t.id).then(() => setSync('synced'));
+    };
+
+    app.promptSub = function(id) {
+        const txt = prompt("Sub-routine:");
+        if(txt) {
+            setSync('syncing');
+            const t = app.tasks.find(x => x.id === id);
+            if(!t.subs) t.subs = [];
+            t.subs.push({id: Date.now(), text: txt, completed: false});
+            app.refresh();
+            if(!app.isOffline) app.supabase.from('tasks').update({subs: t.subs}).eq('id', id).then(() => setSync('synced'));
+        }
+    };
+
+    app.toggleSub = function(tid, sid, e) {
+        if(e) e.stopPropagation();
+        setSync('syncing');
+        const t = app.tasks.find(x => x.id === tid);
+        const s = t.subs.find(x => x.id === sid);
+        s.completed = !s.completed;
+        app.refresh();
+        if(!app.isOffline) app.supabase.from('tasks').update({subs: t.subs}).eq('id', tid).then(() => setSync('synced'));
+    };
+
+    window.addEventListener('resize', app.setInitialCalHeight);
+    window.onload = init;
+
+</script>
+</body>
+</html>
