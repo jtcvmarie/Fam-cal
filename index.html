@@ -702,12 +702,18 @@
     };
 
     // --- DB WRITES ---
-    app.input = document.getElementById('cmd-input');
-    app.input.addEventListener('keypress', (e) => {
+        app.input.addEventListener('keypress', (e) => {
         if(e.key === 'Enter') {
-            const txt = app.input.value.trim();
+            // --- START CHANGE ---
+            let txt = app.input.value.trim();
             if(!txt) return;
-            setSync('syncing');
+            
+            // Force Capitalization
+            txt = txt.charAt(0).toUpperCase() + txt.slice(1);
+            // --- END CHANGE ---
+
+            // Keep the rest of your code below exactly as it was...
+            setSync('syncing'); 
             const obj = { text: txt, list: app.activeList, operator: app.users[app.userIndex], flag: 0, completed: false, date: null, subs: [], created_at: new Date().toISOString() };
             app.tasks.unshift(obj);
             app.refresh(); 
