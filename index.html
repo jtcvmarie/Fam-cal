@@ -789,15 +789,9 @@ app.input = document.getElementById('cmd-input');
         if(!app.isOffline) app.supabase.from('tasks').update({date: dateStr}).eq('id', t.id).then(() => setSync('synced'));
     };
 
-      app.promptSub = function(id) {
-        let txt = prompt("Sub-routine:");
+    app.promptSub = function(id) {
+        const txt = prompt("Sub-routine:");
         if(txt) {
-            // --- CAPITALIZATION FIX ---
-            txt = txt.trim();
-            if(!txt) return;
-            txt = txt.charAt(0).toUpperCase() + txt.slice(1);
-            // --------------------------
-
             setSync('syncing');
             const t = app.tasks.find(x => x.id === id);
             if(!t.subs) t.subs = [];
